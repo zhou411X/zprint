@@ -47,6 +47,9 @@ def build():
         copy("packaging/zprint", "usr/bin/zprint", True)
         copy("packaging/io.github.zprint.Zprint.desktop", "usr/share/applications/io.github.zprint.Zprint.desktop")
         copy("assets/zprint.svg", "usr/share/icons/hicolor/scalable/apps/zprint.svg")
+        for source in sorted((ROOT / "gnome-extension").iterdir()):
+            if source.suffix in (".js", ".json"):
+                copy(source.relative_to(ROOT), Path("usr/share/gnome-shell/extensions/zprint@zhou411X") / source.name)
         copy("README.md", "usr/share/doc/zprint/README.md")
         copy(f"releases/v{version}.md", "usr/share/doc/zprint/RELEASE_NOTES.md")
         changelog = stage / "usr/share/doc/zprint/changelog.gz"

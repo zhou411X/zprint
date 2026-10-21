@@ -1,0 +1,8 @@
+{
+  "uuid": "zprint@zhou411X",
+  "name": "zprint Screenshot Toolbar",
+  "description": "Drag to capture and annotate at the original desktop position with zprint.",
+  "shell-version": ["46"],
+  "version": 2,
+  "url": "https://github.com/zhou411X/zprint"
+}

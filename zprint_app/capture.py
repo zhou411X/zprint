@@ -1,4 +1,4 @@
-"""Asynchronous Screenshot portal v2 client (GNOME 46 / Ubuntu 24.04)."""
+"""Asynchronous Shell selection, with Screenshot portal v2 fallback."""
 
 import uuid
 
@@ -7,10 +7,12 @@ from gi.repository import Gio, GLib
 BUS = "org.freedesktop.portal.Desktop"
 PATH = "/org/freedesktop/portal/desktop"
 REQUEST = "org.freedesktop.portal.Request"
+SHELL_PATH = "/io/github/zprint/Shell"
+SHELL_IFACE = "io.github.zprint.Shell"
 
 
 class ScreenshotRequest:
-    def __init__(self, callback):
+    def __init__(self, callback, prefer_shell=False):
         self.callback = callback
         self.connection = None
         self.subscription = 0
@@ -18,6 +20,8 @@ class ScreenshotRequest:
         self.path = None
         self.done = False
         self.cancellable = Gio.Cancellable()
+        self.prefer_shell = prefer_shell
+        self.shell_token = None
 
     def start(self):
         Gio.bus_get(Gio.BusType.SESSION, self.cancellable, self._connected)
@@ -30,6 +34,37 @@ class ScreenshotRequest:
             return
         if self.done:
             return
+        if self.prefer_shell:
+            self.shell_token = uuid.uuid4().hex
+            self.timer = GLib.timeout_add_seconds(180, self._timeout)
+            self.connection.call("org.gnome.Shell", SHELL_PATH, SHELL_IFACE, "Capture",
+                                 GLib.Variant("(s)", (self.shell_token,)), GLib.VariantType.new("(s)"),
+                                 Gio.DBusCallFlags.NO_AUTO_START, 180000, self.cancellable, self._shell_called)
+        else:
+            self._start_portal()
+
+    def _shell_called(self, connection, result):
+        try:
+            uri, = connection.call_finish(result).unpack()
+        except GLib.Error as error:
+            if self.done:
+                return
+            unavailable = (Gio.DBusError.UNKNOWN_METHOD, Gio.DBusError.UNKNOWN_OBJECT,
+                           Gio.DBusError.UNKNOWN_INTERFACE, Gio.DBusError.SERVICE_UNKNOWN,
+                           Gio.DBusError.NAME_HAS_NO_OWNER)
+            if any(error.matches(Gio.dbus_error_quark(), code) for code in unavailable):
+                # An absent/older extension still supports the original portal flow.
+                self.shell_token = None
+                GLib.source_remove(self.timer)
+                self.timer = 0
+                self._start_portal()
+            else:
+                self._close()
+                self._finish(None, str(error))
+            return
+        self._finish(uri or None, None)
+
+    def _start_portal(self):
         token = "zprint_" + uuid.uuid4().hex
         sender = self.connection.get_unique_name()[1:].replace(".", "_")
         self.path = f"{PATH}/request/{sender}/{token}"
@@ -70,6 +105,10 @@ class ScreenshotRequest:
             self._finish(None, "系统截图失败，请检查桌面截图服务")
 
     def _close(self):
+        if self.connection and self.shell_token:
+            self.connection.call("org.gnome.Shell", SHELL_PATH, SHELL_IFACE, "CancelCapture",
+                                 GLib.Variant("(s)", (self.shell_token,)), None,
+                                 Gio.DBusCallFlags.NO_AUTO_START, 3000, None, self._closed)
         if self.connection and self.path:
             self.connection.call(BUS, self.path, REQUEST, "Close", None, None,
                                  Gio.DBusCallFlags.NONE, 3000, None, self._closed)

@@ -66,6 +66,7 @@ class Canvas(Gtk.DrawingArea):
         super().__init__()
         self.editor = editor
         self.zoom = 1.0
+        self.image_size = None  # Fixed logical size in desktop overlay mode.
         self.offset = (0, 0)
         self.start = None
         self.draft = None
@@ -90,6 +91,8 @@ class Canvas(Gtk.DrawingArea):
         self.queue_draw()
 
     def set_zoom(self, zoom):
+        if self.image_size:
+            return
         self.zoom = max(.1, min(4, zoom))
         doc = self.editor.document
         if doc:
@@ -101,7 +104,8 @@ class Canvas(Gtk.DrawingArea):
     def position(self, event, clamp=False):
         doc = self.editor.document
         x = (event.x - self.offset[0]) / self.zoom
-        y = (event.y - self.offset[1]) / self.zoom
+        sy = self.image_size[1] / doc.height if self.image_size else self.zoom
+        y = (event.y - self.offset[1]) / sy
         if clamp:
             return max(0, min(doc.width - 1, x)), max(0, min(doc.height - 1, y))
         if 0 <= x < doc.width and 0 <= y < doc.height:
@@ -114,16 +118,16 @@ class Canvas(Gtk.DrawingArea):
         doc = self.editor.document
         if not doc:
             return False
-        w, h = doc.width * self.zoom, doc.height * self.zoom
-        ox = max(32, (self.get_allocated_width() - w) / 2)
-        oy = max(32, (self.get_allocated_height() - h) / 2)
+        w, h = self.image_size or (doc.width * self.zoom, doc.height * self.zoom)
+        ox = 0 if self.image_size else max(32, (self.get_allocated_width() - w) / 2)
+        oy = 0 if self.image_size else max(32, (self.get_allocated_height() - h) / 2)
         self.offset = ox, oy
         ctx.set_source_rgba(0, 0, 0, .35)
         ctx.rectangle(ox + 5, oy + 7, w, h)
         ctx.fill()
         ctx.save()
         ctx.translate(ox, oy)
-        ctx.scale(self.zoom, self.zoom)
+        ctx.scale(w / doc.width, h / doc.height)
         ctx.rectangle(0, 0, doc.width, doc.height)
         ctx.clip()
         # Checkerboard stays small even for large source images.
@@ -167,6 +171,11 @@ class Canvas(Gtk.DrawingArea):
             ctx.rectangle(l - 5, t - 5, r - l + 10, b - t + 10)
             ctx.stroke()
         ctx.restore()
+        if self.image_size:
+            ctx.set_source_rgb(.3, .65, 1)
+            ctx.set_line_width(2)
+            ctx.rectangle(1, 1, w - 2, h - 2)
+            ctx.stroke()
         return False
 
     def press(self, widget, event):
@@ -426,6 +435,10 @@ class Editor(Gtk.ApplicationWindow):
             self.set_title(f"{'● ' if doc.dirty else ''}{doc.name} — zprint")
             self.doc_label.set_text(f"{doc.name}  ·  {len(doc.marks)} 个标记")
             self.dimensions.set_text(f"{doc.width} × {doc.height} px")
+        else:
+            self.set_title("zprint")
+            self.doc_label.set_text("准备好，留下重点。")
+            self.dimensions.set_text("")
         self.canvas.queue_draw()
 
     def load(self, pixbuf, name):
@@ -658,6 +671,9 @@ class Zprint(Gtk.Application):
         self.request = None
         self.capture_windows = []
         self.shortcuts_ready = False
+        self.last_shell_token = None
+        self.capture_shell_token = None
+        self.capture_error_dialog = None
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
@@ -668,13 +684,51 @@ class Zprint(Gtk.Application):
         Gtk.Window.set_default_icon_name("zprint")
 
     def editor(self, new=False):
+        from .overlay import OverlayEditor
         windows = self.get_windows()
-        window = None if new else next((w for w in windows if isinstance(w, Editor)), None)
+        window = None if new else next((w for w in windows if isinstance(w, Editor) and not isinstance(w, OverlayEditor)), None)
         return window or Editor(self)
+
+    def show_shell_capture(self, capture):
+        from .overlay import OverlayEditor
+        # Portal completion and the extension launcher can arrive in either order.
+        if self.last_shell_token == capture["token"]:
+            return
+        path = Gio.File.new_for_uri(capture["uri"]).get_path()
+        screenshot = GdkPixbuf.Pixbuf.new_from_file(path)
+        editors = [w for w in self.get_windows() if isinstance(w, Editor) and not isinstance(w, OverlayEditor)]
+        previous = self.get_active_window()
+        if previous not in editors:
+            previous = next(iter(editors), None)
+        window = OverlayEditor(self, screenshot, capture)
+        self.clear_capture_error()
+        for old in self.get_windows():
+            if isinstance(old, Editor) and old is not window:
+                if isinstance(old, OverlayEditor):
+                    old.discard(dismiss=False)
+                    old.destroy()
+                else:
+                    old.hide()
+                    if old is previous:
+                        old.document = None
+                        old.canvas.reset()
+                        old.stack.set_visible_child_name("empty")
+                        old.changed()
+        self.last_shell_token = capture["token"]
+        window.open()
 
     def do_activate(self):
         self.ensure_shortcuts()
-        self.editor().present()
+        window = self.editor()
+        self.dismiss_overlays()
+        window.present()
+
+    def dismiss_overlays(self):
+        from .overlay import OverlayEditor
+        for window in self.get_windows():
+            if isinstance(window, OverlayEditor):
+                window.discard()
+                window.destroy()
 
     def ensure_shortcuts(self):
         if not self.shortcuts_ready and launcher_path() == Path("/usr/bin/zprint"):
@@ -687,10 +741,24 @@ class Zprint(Gtk.Application):
             command.do_print_literal(command, "用法：zprint [--capture | --clipboard | 图片路径]\n")
             return 0
         self.ensure_shortcuts()
-        if "--capture" in args:
+        if args[:1] == ["--shell-capture"]:
+            from .shell_bridge import get_capture
+            capture = get_capture(args[1]) if len(args) == 2 else None
+            if not capture:
+                command.do_printerr_literal(command, "截图已失效，或 zprint GNOME 扩展未启用。\n")
+                return 1
+            try:
+                self.show_shell_capture(capture)
+            except (GLib.Error, ValueError) as error:
+                window = self.editor()
+                window.present()
+                window.message("无法打开浮动标记界面", str(error), True)
+                return 1
+        elif "--capture" in args:
             self.capture()
         elif "--clipboard" in args:
             window = self.editor()
+            self.dismiss_overlays()
             window.present()
             window.paste()
         elif args:
@@ -701,6 +769,7 @@ class Zprint(Gtk.Application):
                 file = command.create_file_for_arg(arg)
                 path = file.get_path()
                 window = self.editor(new=True)
+                self.dismiss_overlays()
                 window.present()
                 if path:
                     window.load_file(path)
@@ -713,11 +782,13 @@ class Zprint(Gtk.Application):
     def capture(self):
         if self.request is not None:
             return
+        self.clear_capture_error()
         self.hold()
+        self.capture_shell_token = self.last_shell_token
         self.capture_windows = [w for w in self.get_windows() if w.get_visible()]
         for window in self.capture_windows:
             window.hide()
-        self.request = ScreenshotRequest(self.capture_finished)
+        self.request = ScreenshotRequest(self.capture_finished, prefer_shell=True)
         GLib.timeout_add(250, self.start_capture)
 
     def start_capture(self):
@@ -725,17 +796,51 @@ class Zprint(Gtk.Application):
             self.request.start()
         return GLib.SOURCE_REMOVE
 
+    def clear_capture_error(self):
+        if self.capture_error_dialog is not None:
+            self.capture_error_dialog.destroy()
+
+    def show_capture_error(self, error):
+        self.clear_capture_error()
+        window = self.editor()
+        window.present()
+        # GNOME 46 can emit closed before screenshot-taken. A portal failure
+        # may therefore precede a successful extension launch: never leave a
+        # modal GTK grab behind the new, always-above overlay.
+        dialog = Gtk.MessageDialog(transient_for=window, modal=False, destroy_with_parent=True,
+                                   message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.CLOSE,
+                                   text="无法启动系统截图")
+        dialog.format_secondary_text(error + "\n\n可以先按 PrintScreen，再回到 zprint 粘贴剪贴板图片。")
+        dialog.connect("response", lambda *_: dialog.destroy())
+        dialog.connect("destroy", lambda *_: setattr(self, "capture_error_dialog", None))
+        self.capture_error_dialog = dialog
+        dialog.show_all()
+
     def capture_finished(self, uri, error):
         self.request = None
+        from .shell_bridge import get_capture
+        capture = get_capture(uri) if uri else None
+        already_opened = self.last_shell_token != self.capture_shell_token
+        if capture or already_opened:
+            self.capture_windows = []
+            try:
+                if capture:
+                    self.show_shell_capture(capture)
+            except (GLib.Error, ValueError) as load_error:
+                window = self.editor()
+                window.present()
+                window.message("无法加载浮动截图", str(load_error), True)
+            finally:
+                self.release()
+            return
         for window in self.capture_windows:
             window.show()
         self.capture_windows = []
         if error:
-            window = self.editor()
-            window.present()
-            window.message("无法启动系统截图", error + "\n\n可以先按 PrintScreen，再回到 zprint 粘贴剪贴板图片。", True)
+            self.show_capture_error(error)
         elif uri:
             window = self.editor()
+            self.dismiss_overlays()
             window.present()
             try:
                 file = Gio.File.new_for_uri(uri)

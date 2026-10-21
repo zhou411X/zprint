@@ -26,12 +26,22 @@ def pump(seconds=.05):
         time.sleep(.001)
 
 
+_app = None
+
+
+def test_application():
+    global _app
+    if _app is None:
+        _app = Zprint()
+        _app.set_application_id("io.github.zprint.Test")
+        _app.register(None)
+    return _app
+
+
 class UiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = Zprint()
-        cls.app.set_application_id("io.github.zprint.Test")
-        cls.app.register(None)
+        cls.app = test_application()
 
     def setUp(self):
         self.window = Editor(self.app)
@@ -184,6 +194,26 @@ class UiTests(unittest.TestCase):
             self.assertFalse(self.window.get_visible())
             self.app.capture_finished(None, None)
         self.assertTrue(self.window.get_visible())
+
+    def test_capture_error_can_be_closed_and_retry_clears_it(self):
+        for retry in (False, True):
+            with self.subTest(retry=retry):
+                self.app.capture_shell_token = self.app.last_shell_token
+                self.app.hold()
+                self.app.capture_finished(None, "截图服务不可用")
+                dialog = self.app.capture_error_dialog
+                self.assertTrue(dialog.get_visible())
+                self.assertIsNone(Gtk.grab_get_current())
+                if retry:
+                    with patch("zprint_app.app.ScreenshotRequest"):
+                        self.app.capture()
+                        self.assertIsNone(self.app.capture_error_dialog)
+                        self.app.capture_finished(None, None)
+                else:
+                    dialog.response(Gtk.ResponseType.CLOSE)
+                self.assertIsNone(self.app.capture_error_dialog)
+                self.assertFalse(dialog.get_visible())
+                self.assertTrue(self.window.get_visible())
 
     def test_capture_result_replaces_saved_and_unsaved_document(self):
         for saved in (False, True):

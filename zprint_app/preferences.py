@@ -136,7 +136,14 @@ class Preferences(Gtk.Dialog):
             "V / A / P / T / R / O / M / N  切换工具\n"
             "Delete  删除选中标记    Esc  取消当前绘制\n"
             "Shift+拖动  正圆 / 正方形    F1  打开此帮助页\n\n"
-            "截图由系统界面完成，首次使用可能请求授权。\n"
+            "原选区浮动模式（需要 zprint GNOME 46 扩展）\n"
+            "zprint 截图快捷键 → 拖选 → 松开开始标记\n"
+            "PrintScreen 保持系统截图行为。\n"
+            "选区时 Esc / 右键取消，不需要再次确认截图。\n"
+            "● 颜色与大小    ✓ / Enter 复制并收起\n"
+            "× / Esc 放弃并收起    ↗ 转完整编辑器\n"
+            "工具栏位于截图下方，屏幕底边时移到上方。\n\n"
+            "扩展未启用时使用系统截图界面，首次可能请求授权。\n"
             "复制图片后建议保留 zprint 窗口，直到完成粘贴。")
 
     def set_binding(self, action, binding):

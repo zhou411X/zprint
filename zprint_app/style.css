@@ -26,3 +26,10 @@ scale highlight { background: #a4e8d1; }
 separator { background: #343d4a; min-height: 1px; }
 dialog { background: #242934; }
 tooltip { background: #11151c; color: #edf1f8; }
+.floating-toolbar { background: #292d35; padding: 6px; border: 1px solid #4a5260; border-radius: 10px; }
+.floating-toolbar button { padding: 4px; min-width: 26px; min-height: 28px; font-size: 21px; background: transparent; border-color: transparent; }
+.floating-toolbar button:hover { background: #434c59; }
+.floating-toolbar button:checked { color: #a4e8d1; background: #3a514c; }
+.floating-toolbar button.suggested-action { color: #a4e8d1; }
+.floating-toolbar button.cancel-capture { color: #ff625c; }
+window.floating-window, .floating-window viewport, .floating-window scrolledwindow { background: transparent; }

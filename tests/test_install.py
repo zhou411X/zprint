@@ -61,6 +61,20 @@ class InstallTests(unittest.TestCase):
         with patch("sys.argv", ["install.py"]), self.assertRaises(SystemExit):
             install.main()
 
+    def test_extension_install_enable_and_uninstall_preserve_other_extensions(self):
+        shell = Gio.Settings.new("org.gnome.shell")
+        shell.set_strv("enabled-extensions", ["other@example"])
+        shell.set_boolean("disable-user-extensions", True)
+        with patch("sys.argv", ["install.py", "--enable-shell-extension"]):
+            install.main()
+        extension = self.paths["DATA"] / "gnome-shell/extensions" / install.EXTENSION_UUID
+        self.assertTrue((extension / "extension.js").is_file())
+        self.assertEqual(shell.get_strv("enabled-extensions"), ["other@example", install.EXTENSION_UUID])
+        self.assertFalse(shell.get_boolean("disable-user-extensions"))
+        install.uninstall()
+        self.assertEqual(shell.get_strv("enabled-extensions"), ["other@example"])
+        self.assertFalse(extension.exists())
+
     def test_uninstall_removes_only_zprint_shortcuts(self):
         original = install.BASE + "other/"
         self.settings.set_strv("custom-keybindings", [original])

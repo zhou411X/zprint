@@ -1,17 +1,17 @@
 # zprint
 
-Ubuntu 24.04 / GNOME / Wayland 原生截图标记工具。系统负责截图，zprint 负责标记。
+Ubuntu 24.04 / GNOME / Wayland 原生截图标记工具。拖选截图，松开鼠标直接标记。
 
 ## 安装和启动
 
 推荐从 [GitHub Releases](https://github.com/zhou411X/zprint/releases) 下载 DEB 安装包，然后执行：
 
 ```sh
-sudo apt install ./zprint_0.1.0-1_all.deb
+sudo apt install ./zprint_0.2.0-1_all.deb
 /usr/bin/zprint
 ```
 
-DEB 安装到系统目录，首次启动时为当前用户注册默认快捷键，已有绑定会保留。如果以前通过 `install.sh` 安装，请先关闭应用并运行 `sh install.sh --uninstall` 移除用户安装，再安装 DEB，以免旧版本遮盖新版本。源码和导出图片不受影响。
+DEB 安装到系统目录，首次启动时为当前用户注册默认快捷键，已有绑定会保留。从旧版 DEB 升级也使用上述命令；升级前先退出 zprint，升级后重新启动。启用浮动标记还需按下文加载 GNOME 46 扩展。如果以前通过 `install.sh` 安装，请先关闭应用并运行 `sh install.sh --uninstall` 移除用户安装，再安装 DEB，以免旧版本遮盖新版本。源码和导出图片不受影响。
 
 以下是源码用户安装方式：
 
@@ -30,13 +30,44 @@ sh install.sh
 
 ## 截图流程
 
+### 桌面原选区浮动标记（GNOME 46）
+
+源码安装并启用扩展：
+
+```sh
+sh install.sh --enable-shell-extension
+```
+
+首次安装或更新扩展后，保存桌面上的工作，**注销并重新登录**。安装脚本会启用当前用户的 GNOME 扩展开关，并把 `zprint@zhou411X` 加入启用列表，保留其他扩展配置。不会自动注销，也不会修改系统 PrintScreen 绑定。
+
+之后按 **zprint 自己的截图快捷键**（默认 Ctrl+Alt+S，可在设置中修改，已有设置保持不变），直接在冻结的桌面画面上拖选，**松开鼠标即出现标记工具栏**，不弹出完整编辑器，也不需要系统截图确认。反向拖选同样支持，单击不生成截图；选区时按 Esc 或右键取消，恢复原来的窗口和标记。**PrintScreen 保持 Ubuntu 系统截图行为，不进入自定义选区。**
+
+图片保持在桌面原选区，工具栏出现在下方，可以直接画箭头、画笔、文字、形状、打码和数字。`●` 打开颜色、粗细和文字大小滑条；`✓` / Enter 复制结果并收起；`×` / Esc 放弃标记并收起（正在绘制时，第一次 Esc 仅取消笔画）。`↓` 导出，`↗` 转完整编辑器，保留可撤销的标记。
+
+工具栏靠近屏幕底边时移到图片上方；全屏截图没有外部空间时显示在图片底部内侧。工具栏和选区边框不进入导出或复制结果。收起后 zprint 留在后台提供剪贴板图片，下一张截图直接清除上一张的图像、标记和历史。
+
+扩展使用 GNOME 46 桌面纹理和选区输入组件实现自定义拖选，通过 Mutter 窗口接口定位。原始图片只作为临时缓存，完成收起或下一次截图时清理；需要保留请复制或导出。普通剪贴板图片和导入文件仍在完整编辑器中打开。其他入口产生的系统区域、窗口和屏幕截图也保留浮动标记支持。扩展不读取剪贴板历史，产品不使用模拟按键或 `org.gnome.Shell.Eval`。目前仅声明兼容 GNOME 46。
+
+停用浮动模式：`gnome-extensions disable zprint@zhou411X`。重新启用：`gnome-extensions enable zprint@zhou411X`。扩展未运行或尚未重新登录加载新版时，应用截图入口回退到系统 portal；用 `gnome-extensions info zprint@zhou411X` 查看状态。扩展不改写系统按键配置，也不接管 PrintScreen。
+
+0.2.0 DEB 已包含扩展；首次安装或更新后先保存工作、注销并重新登录，再由当前用户启用：
+
+```sh
+gsettings set org.gnome.shell disable-user-extensions false
+gnome-extensions enable zprint@zhou411X
+```
+
+### 完整编辑器模式
+
+未启用扩展时：
+
 1. 按 **Ctrl+Alt+S**，或点击 zprint 的「截图」。
 2. 在系统截图界面选择区域、窗口或全屏，确认截图。
 3. zprint 自动打开图片，开始标记。
 
 也支持原来的 **PrintScreen → 完成截图 → Ctrl+Alt+V**，读取剪贴板图片。应用内使用 Ctrl+V。
 
-Wayland 下普通应用不能可靠地模拟 PrintScreen 或全局监听剪贴板。本应用通过 `org.freedesktop.portal.Screenshot` v2 的 `interactive=true` 请求系统截图；GNOME 46 的后台会打开与 PrintScreen 相同的系统截图界面，截图也会复制到剪贴板。首次调用可能出现系统权限确认。
+Wayland 下普通应用不能可靠地模拟 PrintScreen 或全局监听剪贴板。扩展模式由 GNOME Shell 直接取得桌面纹理；扩展不可用时通过 `org.freedesktop.portal.Screenshot` v2 的 `interactive=true` 请求系统截图。portal 模式首次调用可能出现系统权限确认。
 
 结果先通过 portal 返回的 URI 载入；zprint 获得焦点后异步读取剪贴板，只有与本次截图内容一致才采用。剪贴板不可读或内容已变化时仍使用本次截图文件，避免误读旧图。应用不轮询或记录剪贴板历史。截图取消会恢复原窗口；成功取得新截图或剪贴板图片后，直接在当前窗口替换上一张图片，清除旧标记和撤销历史，无论是否已保存都不再询问。
 
@@ -83,12 +114,17 @@ DEB 安装对应命令为 `/usr/bin/zprint --capture` 和 `/usr/bin/zprint --cli
 ## 开发和测试
 
 ```sh
-sudo apt install xvfb xauth
+sudo apt install xvfb xauth gjs
 make build
 make test
+make test-shell
 make deb
 ```
 
 DEB 产物与 SHA256 校验文件位于 `dist/`。构建使用系统 `dpkg-deb`，无需 root；版本号统一读取 `zprint_app/__init__.py`。可通过 `SOURCE_DATE_EPOCH` 固定构建时间戳（默认为 0），相同输入生成相同安装包。
 
 构建为 Python 字节码编译检查。自动化测试用 Xvfb 验证绘图、历史、导出、剪贴板及界面交互，用隔离的假 portal 验证响应和取消生命周期。真实 Wayland 的系统截图权限弹窗、全局按键和焦点策略需要在桌面会话人工验证，Xvfb 不代表这些端到端场景已通过。
+
+`make test` 还需要 `gjs`，覆盖浮动模式的原图坐标、复制收起和工具栏边缘布局。`make test-shell` 需要本机 GNOME Shell 46，创建独立 D-Bus、临时用户配置和无头 Wayland 显示，运行真实系统截图与扩展定位；不重启当前桌面。测试预览与日志写入 `dist/`，不会打包测试用扩展入口。物理多显示器、分数缩放和真实快捷键仍需桌面验证。
+
+隔离 Wayland 测试覆盖应用自定义截图入口、松开直接标记、主窗口不闪现、反向拖选、取消恢复、连续截图像素及缓存清理、停用时释放输入，以及 PrintScreen 保持系统截图行为；也覆盖 portal 的两种通知顺序。该独立会话内的虚拟输入验证工具切换、绘制、撤销、重做和完成收起。测试观察器不进入应用安装包。
