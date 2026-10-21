@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=zprint
+GenericName=截图标记
+Comment=使用系统截图，轻松标记和分享
+Exec=/usr/bin/zprint %F
+Icon=zprint
+Terminal=false
+Categories=Graphics;2DGraphics;
+StartupNotify=true
+StartupWMClass=io.github.zprint.Zprint
+MimeType=image/png;image/jpeg;image/webp;image/bmp;
+Actions=Capture;Clipboard;
+
+[Desktop Action Capture]
+Name=系统截图
+Exec=/usr/bin/zprint --capture
+
+[Desktop Action Clipboard]
+Name=从剪贴板标记
+Exec=/usr/bin/zprint --clipboard

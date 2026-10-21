@@ -1,0 +1,28 @@
+window { background: #191c23; color: #e6e9ef; }
+headerbar { background: #20242d; border-bottom: 1px solid #343944; box-shadow: none; }
+headerbar .title { font-weight: 800; font-size: 18px; }
+headerbar .subtitle { color: #9aa3b4; font-size: 11px; }
+button { background: #2b303b; color: #e6e9ef; border: 1px solid #3b424f; border-radius: 7px; padding: 7px 12px; box-shadow: none; text-shadow: none; }
+button:hover { background: #39414e; }
+button:checked, button.suggested-action { background: #a4e8d1; color: #152b26; border-color: #a4e8d1; }
+button:disabled { color: #626b7c; background: #222630; border-color: #303642; }
+.sidebar { background: #222630; border-right: 1px solid #353b47; padding: 10px 10px; }
+.section { color: #8995a8; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.tool { min-height: 18px; padding: 4px 10px; border-color: transparent; background: transparent; }
+.tool:hover { background: #303744; }
+.tool:checked { background: #344c48; color: #b0f2dd; border-color: #486c60; }
+.toolbar { background: #222630; padding: 9px 12px; border-bottom: 1px solid #353b47; }
+.statusbar { background: #20242d; border-top: 1px solid #343944; padding: 8px 14px; color: #a8b3c4; font-size: 11px; }
+.hero { font-size: 34px; font-weight: 800; color: #eef2f8; }
+.muted { color: #98a5b9; }
+.hint { color: #9ca8ba; font-size: 12px; }
+.badge { background: #31463f; color: #a4e8d1; border-radius: 12px; padding: 5px 12px; font-size: 11px; }
+entry, spinbutton, textview text { background: #191e27; color: #edf1f8; border-color: #434c5d; caret-color: #a4e8d1; }
+scale trough { background: #39414f; }
+scale highlight { background: #a4e8d1; }
+.custom-color { min-width: 20px; min-height: 20px; padding: 0; }
+.sidebar scale { padding: 8px 0; }
+.sidebar scale value { color: #c9d3e1; min-width: 26px; }
+separator { background: #343d4a; min-height: 1px; }
+dialog { background: #242934; }
+tooltip { background: #11151c; color: #edf1f8; }
